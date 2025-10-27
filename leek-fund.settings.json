@@ -1,0 +1,77 @@
+{
+  "leek-fund.stocks": [
+    "sh000001",
+    "sh000300",
+    "sh000016",
+    "sh000688",
+    "hk03690",
+    "hk00700",
+    "usr_ixic",
+    "usr_dji",
+    "usr_inx",
+    "nf_IF0",
+    "nf_IH0",
+    "nf_IC0",
+    "nf_IM0",
+    "hf_OIL",
+    "hf_CHA50CFD"
+  ],
+  "leek-fund.stockPrice": {},
+  "leek-fund.stockHeldTipShow": false,
+  "leek-fund.funds": [
+    [
+      "003096",
+      "001632",
+      "420009",
+      "320007",
+      "017436",
+      "017437",
+      "400015",
+      "014978",
+      "012414"
+    ]
+  ],
+  "leek-fund.fundGroups": [
+    "我的基金"
+  ],
+  "leek-fund.binance": [
+    "BTC_USDT",
+    "ETH_USDT",
+    "EOS_USDT"
+  ],
+  "leek-fund.stocksRemind": {},
+  "leek-fund.statusBarStock": [
+    "usr_ixic"
+  ],
+  "leek-fund.interval": 5000,
+  "leek-fund.riseColor": "green",
+  "leek-fund.fallColor": "green",
+  "leek-fund.hideFundBarItem": false,
+  "leek-fund.hideStatusBarStock": false,
+  "leek-fund.hideStatusBar": false,
+  "leek-fund.newsUserIds": [
+    "5124430882",
+    "1287305957",
+    "1632326933"
+  ],
+  "leek-fund.xueqiuCookie": "",
+  "leek-fund.fundAmount": {},
+  "leek-fund.showEarnings": 1,
+  "leek-fund.iconType": "arrow",
+  "leek-fund.fundSort": 1,
+  "leek-fund.stockSort": 0,
+  "leek-fund.stockRemindSwitch": 1,
+  "leek-fund.stockKLineChartSwitch": 0,
+  "leek-fund.labelFormat": {
+    "statusBarLabelFormat": "「${name}」${price}  ${icon}（${percent}）",
+    "sidebarStockLabelFormat": "${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」",
+    "sidebarFundLabelFormat": "${icon|padRight|4}${percent|padRight}「${name}」${earnings} ${time}"
+  },
+  "leek-fund.immersiveBackground": true,
+  "leek-fund.flash-news": true,
+  "leek-fund.expandAStock": true,
+  "leek-fund.expandHKStock": false,
+  "leek-fund.expandUSStock": false,
+  "leek-fund.expandCNFuture": false,
+  "leek-fund.expandOverseaFuture": false
+}

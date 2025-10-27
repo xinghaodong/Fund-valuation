@@ -1,0 +1,121 @@
+{
+  "name": "functest",
+  "displayName": "functest",
+  "description": "基金估值计算",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fundExplorer",
+          "title": "实时基金估值",
+          "icon": "media/fund.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Leek Fund",
+      "properties": {
+        "leekfund.fundList": {
+          "type": "array",
+          "default": [],
+          "description": "关注的基金代码列表"
+        }
+      }
+    },
+    "views": {
+      "fundExplorer": [
+        {
+          "id": "leekFundView",
+          "name": "我的基金",
+          "icon": "media/fund.svg",
+          "contextualTitle": "实时基金估值"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "leekfund.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "leekfund.addFund",
+        "title": "新增基金",
+        "icon": "$(add)"
+      },
+      {
+        "command": "leekfund.removeFundItem",
+        "title": "删除基金",
+        "icon": "$(close)"
+      },
+      {
+        "command": "leekfund.topFundItem",
+        "title": "置顶基金",
+        "icon": "$(arrow-up)"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "leekfund.addFund",
+          "when": "view == leekFundView && viewItem == fundCategory",
+          "group": "inline"
+        },
+        {
+          "command": "leekfund.refresh",
+          "when": "view == leekFundView && viewItem == fundCategory",
+          "group": "inline"
+        },
+        {
+          "command": "leekfund.removeFundItem",
+          "when": "view == leekFundView && viewItem == fund",
+          "group": "inline"
+        },
+        {
+          "command": "leekfund.topFundItem",
+          "when": "view == leekFundView && viewItem == fund",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.36.0",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "webpack": "^5.102.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "cheerio": "^1.1.2"
+  }
+}

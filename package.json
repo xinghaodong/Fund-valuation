@@ -1,8 +1,9 @@
 {
-  "name": "functest",
-  "displayName": "functest",
+  "name": "fund-valuation",
+  "displayName": "Fund Valuation",
   "description": "基金估值计算",
-  "version": "0.0.1",
+  "version": "1.0.1",
+  "publisher": "Fund-valuation",
   "engines": {
     "vscode": "^1.105.0"
   },

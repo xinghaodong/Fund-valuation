@@ -1,4 +1,4 @@
-# Functest README
+# Fund-valuation README
 
 这是一个 VS Code 插件，用于实时查看和管理基金估值数据。
 

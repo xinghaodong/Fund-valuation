@@ -2,7 +2,7 @@
   "name": "fund-valuation",
   "displayName": "Fund Valuation",
   "description": "基金估值计算",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "Fund-valuation",
   "icon": "logo.png",
   "engines": {

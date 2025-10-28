@@ -18,9 +18,13 @@ interface IConfigFundItem {
   code: string;
   name: string;
 }
+
+let holdingsPanel: vscode.WebviewPanel | undefined = undefined;
+
 // 定义一个计时器
 export let timer: NodeJS.Timeout | null = null;
 const provider = new LeekFundDataProvider();
+
 function startAutoRefresh(provider: LeekFundDataProvider) {
   console.log("开始自动刷新");
   // 这里初始化先刷新一次
@@ -62,8 +66,7 @@ async function showFundSearchPicker(provider: LeekFundDataProvider) {
       try {
         // 调用搜索接口
         const result = await provider.getFundSearch(value);
-
-        if (typeof result === "string" || !result?.Datas?.length) {
+        if (typeof result === "string" || !result?.length) {
           quickPick.items = [
             {
               label: `$(warning) 未找到相关基金`,
@@ -77,12 +80,19 @@ async function showFundSearchPicker(provider: LeekFundDataProvider) {
 
         // console.log(result, "result");
         // 将搜索结果转换为 QuickPickItem 数组
-        const items: IFundQuickPickItem[] = result.Datas.map(
-          (fund: { NAME: any; _id: any; Pinyin: any }) => ({
+        const items: IFundQuickPickItem[] = result.map(
+          (fund: {
+            NAME: any;
+            _id: any;
+            CATEGORY: any;
+            CATEGORYDESC: string;
+          }) => ({
             label: `$(search) ${fund.NAME}`, // 添加图标
-            description: `代码: ${fund._id}`,
+            description: `代码: ${fund._id} 分类: ${fund.CATEGORYDESC}`,
             fundCode: fund._id,
             fundName: fund.NAME,
+            type: fund.CATEGORY,
+            typeName: fund.CATEGORYDESC,
           })
         );
 
@@ -162,6 +172,59 @@ export function activate(context: vscode.ExtensionContext) {
   // 注册 TreeView
   const treeView = vscode.window.createTreeView("leekFundView", {
     treeDataProvider: provider,
+    dragAndDropController: new (class
+      implements vscode.TreeDragAndDropController<any>
+    {
+      dropMimeTypes = ["application/vnd.code.tree.leekFundView"];
+      dragMimeTypes = ["application/vnd.code.tree.leekFundView"];
+
+      async handleDrag(
+        source: any[],
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
+      ) {
+        dataTransfer.set(
+          "application/vnd.code.tree.leekFundView",
+          new vscode.DataTransferItem(source.map((s) => s.id))
+        );
+      }
+
+      async handleDrop(target: any, dataTransfer: vscode.DataTransfer) {
+        const dragData = dataTransfer.get(
+          "application/vnd.code.tree.leekFundView"
+        );
+        if (!dragData) {
+          return;
+        }
+        const draggedId: string = dragData.value[0];
+        const targetId = target?.id;
+        if (!targetId) {
+          return;
+        }
+        const config = vscode.workspace.getConfiguration("leekfund");
+        let fundList = config.get<{ code: string; name: string }[]>(
+          "fundList",
+          []
+        );
+        const draggedIndex = fundList.findIndex((f) => f.code === draggedId);
+        const targetIndex = fundList.findIndex((f) => f.code === targetId);
+        if (draggedIndex < 0 || targetIndex < 0) {
+          return;
+        }
+
+        // 从原位置删除并插入新位置
+        const [moved] = fundList.splice(draggedIndex, 1);
+        fundList.splice(targetIndex, 0, moved);
+
+        await config.update(
+          "fundList",
+          fundList,
+          vscode.ConfigurationTarget.Global
+        );
+        vscode.window.showInformationMessage("基金顺序已更新");
+        provider.refresh();
+      }
+    })(),
   });
 
   // 注册刷新基金命令
@@ -251,30 +314,133 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // 注册点击基金命令
+  let showHoldingsCmd = vscode.commands.registerCommand(
+    "leekfund.showHoldings",
+    async (fundCode: string, fundName: string) => {
+      // 复用或创建 Webview 面板
+      if (!holdingsPanel) {
+        holdingsPanel = vscode.window.createWebviewPanel(
+          "leekFundHoldings",
+          "基金持仓",
+          vscode.ViewColumn.Beside,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+          }
+        );
+
+        // === 关键：只注册一次消息监听器 ===
+        const messageDisposable = holdingsPanel.webview.onDidReceiveMessage(
+          async (message) => {
+            if (message.command === "refresh" && message.fundCode) {
+              const { fundCode, fundName } = message;
+              holdingsPanel!.webview.html = getLoadingHTML();
+
+              try {
+                const holdings = await provider.findOne(fundCode);
+                holdingsPanel!.webview.html = getHoldingsHTML(
+                  fundName,
+                  fundCode,
+                  holdings
+                );
+              } catch (err) {
+                holdingsPanel!.webview.html = getErrorHTML("刷新失败，请重试");
+              }
+            }
+          }
+        );
+
+        // 面板关闭时清理监听器
+        holdingsPanel.onDidDispose(() => {
+          messageDisposable.dispose();
+          holdingsPanel = undefined;
+        });
+      }
+
+      // 切换标题和内容
+      holdingsPanel.title = `${fundName} (${fundCode}) 持仓`;
+      holdingsPanel.reveal(vscode.ViewColumn.Beside);
+
+      // 显示加载中
+      holdingsPanel.webview.html = getLoadingHTML();
+
+      // 加载最新数据
+      try {
+        const holdings = await provider.findOne(fundCode);
+        holdingsPanel.webview.html = getHoldingsHTML(
+          fundName,
+          fundCode,
+          holdings
+        );
+      } catch (err) {
+        holdingsPanel.webview.html = getErrorHTML("加载失败，请检查网络");
+      }
+    }
+  );
+
   context.subscriptions.push(
     refreshCmd,
+    showHoldingsCmd,
     addFundCmd,
     topFundCmd,
-    removeFundCmd,
-    treeView
+    removeFundCmd
   );
 
   treeView.onDidChangeVisibility((e) => {
     if (e.visible) {
       // 重新启动刷新
-      console.log("视图可见，重新启动刷新");
       if (!timer) {
-        startAutoRefresh(provider);
+        // 检查是否符合交易时间条件
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const day = now.getDay();
+
+        // 判断是否为工作日（周一到周五）
+        const isWorkday = day > 0 && day < 6;
+
+        // 判断是否已过9:30
+        const isAfterTradingStart = hours > 9 || (hours === 9 && minutes >= 30);
+
+        if (isWorkday && isAfterTradingStart) {
+          console.log("符合交易时间条件，启动刷新");
+          // 符合交易时间条件，直接启动刷新
+          startAutoRefresh(provider);
+        } else {
+          console.log("不符合交易时间条件，设置定时器");
+          // 不符合交易时间条件，设置定时器到下一个交易时间
+          scheduleNextTradingTime(provider);
+        }
       }
     } else {
       // 视图隐藏则暂停刷新
-      console.log("视图影藏，暂停刷新");
+      console.log("视图隐藏，暂停刷新");
       if (timer) {
         clearInterval(timer);
         timer = null;
       }
     }
   });
+}
+function scheduleNextTradingTime(provider: LeekFundDataProvider) {
+  const now = new Date();
+  let nextRun = new Date();
+
+  // 设置为当天9:30
+  nextRun.setHours(9, 30, 0, 0);
+
+  // 如果今天已过9:30或者是周末，计算下一个交易日
+  while (nextRun <= now || nextRun.getDay() === 0 || nextRun.getDay() === 6) {
+    nextRun.setDate(nextRun.getDate() + 1);
+  }
+
+  const delay = nextRun.getTime() - now.getTime();
+  console.log("不符合交易时间条件,刷新定时器!", delay);
+  setTimeout(() => {
+    console.log("不符合交易时间条件,刷新定时器", delay);
+    startAutoRefresh(provider);
+  }, delay);
 }
 
 export function deactivate() {
@@ -283,4 +449,139 @@ export function deactivate() {
   if (timer) {
     clearInterval(timer);
   }
+}
+
+function getLoadingHTML() {
+  return `
+    <!DOCTYPE html>
+    <html><body style="font-family: var(--vscode-editor-font-family); padding: 20px; color: var(--vscode-foreground);">
+      <h3>正在加载持仓数据...</h3>
+      <p><span class="codicon codicon-loading codicon-modifier-spin"></span> 请稍候</p>
+    </body></html>
+  `;
+}
+
+function getErrorHTML(message: string) {
+  return `
+    <!DOCTYPE html>
+    <html><body style="font-family: var(--vscode-editor-font-family); padding: 20px; color: var(--vscode-errorForeground);">
+      <h3>加载失败</h3>
+      <p>${message}</p>
+    </body></html>
+  `;
+}
+
+function getHoldingsHTML(fundName: string, fundCode: string, holdings: any[]) {
+  if (!holdings || holdings.length === 0) {
+    return getErrorHTML("暂无持仓数据");
+  }
+
+  const rows = holdings
+    .map((item: any) => {
+      const change = item.f3 ? (item.f3 / 100).toFixed(2) : "0.00";
+      const changeNum = parseFloat(change);
+      const changeColor =
+        changeNum > 0 ? "#d73a49" : changeNum < 0 ? "#28a745" : "#6c757d";
+      return `
+        <tr style="border-bottom: 1px solid var(--vscode-editorWidget-border);">
+          <td style="padding: 8px 12px;">${item.f14 || item.rawName || "-"}</td>
+          <td style="padding: 8px 12px; color: #888; font-size: 0.9em;">${
+            item.f12 || item.symbol
+          }</td>
+          <td style="padding: 8px 12px; text-align: right;">${item.weightPct?.toFixed(
+            2
+          )}%</td>
+          <td style="padding: 8px 12px; text-align: right; color: ${changeColor}; font-weight: 500;">
+            ${change.startsWith("-") ? "" : "+"}${change}%
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const totalWeight = holdings
+    .reduce((sum: number, h: any) => sum + (h.weightPct || 0), 0)
+    .toFixed(2);
+  const fundChangePct = holdings[0]?.fundChangePct || "0.00";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { 
+          font-family: var(--vscode-editor-font-family, Segoe UI); 
+          padding: 16px; 
+          color: var(--vscode-foreground); 
+          margin: 0;
+        }
+        h2 { margin: 0 0 12px 0; }
+        .header { 
+          display: flex; 
+          justify-content: space-between; 
+          align-items: center; 
+          margin-bottom: 16px; 
+          padding-bottom: 8px; 
+          border-bottom: 1px solid var(--vscode-editorWidget-border); 
+        }
+        .summary { font-size: 0.9em; color: #888; }
+        .change { font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { text-align: left; padding: 8px 12px; color: #888; font-weight: normal; font-size: 0.9em; }
+        .refresh { 
+          cursor: pointer; 
+          color: var(--vscode-textLink-foreground); 
+          font-size: 0.9em; 
+          padding: 4px 8px;
+          border: 1px solid transparent;
+          border-radius: 4px;
+          background: var(--vscode-button-background);
+        }
+        .refresh:hover { 
+          background: var(--vscode-button-hoverBackground);
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <h2>${fundName}</h2>
+          <div class="summary">
+            代码: ${fundCode} | 合计占比: ${totalWeight}% | 
+            基金估算涨跌: <span class="change" style="color: ${
+              parseFloat(fundChangePct) > 0 ? "#d73a49" : "#28a745"
+            };">${fundChangePct}%</span>
+          </div>
+        </div>
+        <div class="refresh" onclick="refresh()">刷新</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>股票名称</th>
+            <th>代码</th>
+            <th style="text-align: right;">占净值</th>
+            <th style="text-align: right;">涨跌幅</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+
+      <script>
+        const vscode = acquireVsCodeApi();
+        function refresh() {
+          vscode.postMessage({ 
+            command: 'refresh', 
+            fundCode: '${fundCode}', 
+            fundName: '${fundName}' 
+          });
+        }
+      </script>
+    </body>
+    </html>
+  `;
 }

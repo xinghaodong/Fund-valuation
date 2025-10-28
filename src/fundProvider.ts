@@ -16,7 +16,7 @@ export class CategoryItem extends vscode.TreeItem {
   ) {
     super(label, collapsibleState);
     this.iconPath = new vscode.ThemeIcon("folder");
-    if (label === "FUND") {
+    if (label === "基金") {
       this.contextValue = "fundCategory";
     } else {
       this.contextValue = "category";
@@ -49,10 +49,16 @@ export class FundItem extends vscode.TreeItem {
     this.iconPath = iconPath;
     this.label = labelStr;
     this.name = name;
-    this.tooltip = `${code} | ${labelStr}`;
+    this.tooltip = `${code}  ${labelStr}`;
     this.description = "";
     this.contextValue = "fund";
     this.id = code;
+
+    this.command = {
+      command: "leekfund.showHoldings",
+      title: "查看持仓",
+      arguments: [code, name],
+    };
   }
 }
 
@@ -74,6 +80,31 @@ export class LeekFundDataProvider {
   readonly onDidFinishRefresh = this._onDidFinishRefresh.event;
   public result: Number = 1; // 刷新结果 1 刷新成功 0 刷新失败
 
+  private headers: any = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    Referer: "https://quote.eastmoney.com/",
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Cache-Control": "no-cache",
+    connection: "keep-alive",
+    "Sec-Ch-Ua":
+      '"Google Chrome";v="141", "Not/A)Brand";v="8", "Chromium";v="141"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    Cookie:
+      "st_nvi=sqTZk-g-VRnpQuprNKZ1y3bb4; qgqp_b_id=af5cce20eeaa6d564690e90f144c5289; nid=07da164c511bc9eb6784dd93043c48df; nid_create_time=1759980972277; gvi=qkQPi06hWa6NEFgq9B34f7c14; gvi_create_time=1759980972277; AUTH_FUND.EASTMONEY.COM_GSJZ=AUTH*TTJJ*TOKEN; st_si=93710146157032; st_asi=delete; EMFUND1=10-20%2010%3A42%3A48@%23%24%u5E7F%u53D1%u6E2F%u80A1%u521B%u65B0%u836FETF%u8054%u63A5%28QDII%29A@%23%24019670; EMFUND2=10-20%2010%3A42%3A47@%23%24%u4E1C%u8D22%u4E0A%u8BC150A@%23%24008240; EMFUND3=10-20%2010%3A42%3A48@%23%24%u5BCC%u56FD%u4E0A%u8BC1%u6307%u6570ETF%u8054%u63A5C@%23%24013286; EMFUND4=10-24%2018%3A21%3A02@%23%24%u5929%u5F18%u4E2D%u8BC1%u98DF%u54C1%u996E%u6599ETF@%23%24159736; EMFUND5=10-24%2018%3A15%3A33@%23%24%u6613%u65B9%u8FBE%u4E2D%u8BC1%u6D77%u5916%u4E92%u8054%u7F5150ETF%u8054%u63A5%28QDII%29A@%23%24006327; EMFUND6=10-27%2011%3A07%3A42@%23%24%u534E%u5B9D%u6D77%u5916%u79D1%u6280%u80A1%u7968%28QDII-LOF%29C@%23%24017204; EMFUND7=10-27%2011%3A20%3A41@%23%24%u4E2D%u6B27%u533B%u7597%u5065%u5EB7%u6DF7%u5408A@%23%24003095; EMFUND8=10-27%2016%3A37%3A23@%23%24%u6C38%u8D62%u79D1%u6280%u667A%u9009%u6DF7%u5408%u53D1%u8D77A@%23%24022364; EMFUND0=10-28%2009%3A32%3A42@%23%24%u62DB%u5546%u4E2D%u8BC1%u767D%u9152%u6307%u6570%28LOF%29A@%23%24161725; EMFUND9=10-28 09:39:20@#$%u534E%u5B9D%u7EB3%u65AF%u8FBE%u514B%u7CBE%u9009%u80A1%u7968%u53D1%u8D77%u5F0F%28QDII%29A@%23%24017436; st_pvi=70723012225516; st_sp=2025-10-09%2011%3A36%3A12; st_inirUrl=https%3A%2F%2Fchat.qwen.ai%2Fc%2F7f8dd940-74e6-48ab-873a-397bae1fdfbf; st_sn=8; st_psi=20251028094729670-112200305283-5653636181",
+    host: "push2.eastmoney.com",
+    pragma: "no-cache",
+  };
+
   // 从配置或本地存储读取关注的基金代码
   private getWatchList() {
     const config = vscode.workspace.getConfiguration("leekfund");
@@ -82,14 +113,35 @@ export class LeekFundDataProvider {
     return config.get("fundList", []); // 默认几个基金代码
   }
 
+  // 搜索基金
   async getFundSearch(key: string): Promise<any> {
-    const res = await axios.get(
-      `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${key}`
-    );
-    if (res.data.Datas && res.data.Datas.length > 0) {
-      return res.data;
+    const url =
+      "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx";
+    const params = {
+      m: "1",
+      key: key,
+    };
+    console.log("搜索基金", url + params.key);
+    try {
+      const res = await axios.get(url, { params });
+      if (res.data.Datas && res.data.Datas.length > 0) {
+        // 过滤数据 CATEGORY === 700的才能返回
+        let data = res.data.Datas.filter((item: { CATEGORY: number }) => {
+          return item.CATEGORY === 700;
+        });
+        console.log("过滤后的基金列表", data);
+        return data;
+      }
+      // return "未找到该基金";
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error("Axios 错误:", error.message);
+        console.error("状态码:", error.response?.status);
+        console.error("响应数据:", error.response?.data);
+      } else {
+        console.error("未知错误:", error);
+      }
     }
-    return "未找到该基金";
   }
 
   mergeArrays(arrayA: any[], arrayB: any[], key2: string, key: string) {
@@ -114,7 +166,7 @@ export class LeekFundDataProvider {
     return merged;
   }
 
-  async findOne(id: any) {
+  public async findOne(id: any) {
     // console.log(id, "id");
     // console.log(id, 'id');
     // id 基金编号，topline 显示基金持有多少股票，
@@ -149,11 +201,11 @@ export class LeekFundDataProvider {
           );
         })
         .first();
-      const headers: string[] = [];
+      const headersTitle: string[] = [];
       const datas: any[] = [];
       // 读取表头以确定列索引
       table.find("thead tr th").each((i, th) => {
-        headers.push($(th).text().trim());
+        headersTitle.push($(th).text().trim());
         return; // 显式返回 void，防止类型推断为 number
       });
 
@@ -165,7 +217,7 @@ export class LeekFundDataProvider {
           .get();
         if (!cols || !cols.length) return;
         // 尝试找到证券代码/简称/占比的列
-        const headerText = headers.join("|").toLowerCase();
+        const headerText = headersTitle.join("|").toLowerCase();
         // console.log(headerText, 'headerText', headers);
         const rawCode = cols[0] || "";
         const rawName = cols[1] || "";
@@ -173,10 +225,12 @@ export class LeekFundDataProvider {
         // console.log(rawNames, "rawNames");
         let weightIdx =
           headerText.indexOf("占净值") >= 0
-            ? headers.findIndex((h) => h.includes("占净值"))
-            : headers.findIndex((h) => h.includes("占净值比例"));
+            ? headersTitle.findIndex((h) => h.includes("占净值"))
+            : headersTitle.findIndex((h) => h.includes("占净值比例"));
 
-        if (weightIdx < 0) weightIdx = cols.length - 1;
+        if (weightIdx < 0) {
+          weightIdx = cols.length - 1;
+        }
         const rawWeight = cols[weightIdx] || "";
         // 解析 weight（可能带 %）
         const weightPct =
@@ -272,16 +326,23 @@ export class LeekFundDataProvider {
   }
   // 根据 查询出来的基金codes 集合获取股票信息
   async getStockInfo(codes: string) {
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f12,f14,f9&secids=${codes}`;
-
+    // const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f12,f14,f9&secids=${codes}`;
+    const url = "https://push2.eastmoney.com/api/qt/ulist.np/get";
+    const params = {
+      fields: "f2,f3,f12,f14,f9",
+      secids: codes,
+    };
     try {
-      const res = await axios.get(url);
-
-      // console.log(res.data, 'res.data');
-      // console.log(res.data.data, 'res.data.data');
-      return res.data.data;
+      const response = await axios.get(url, { params, headers: this.headers });
+      return response.data.data;
     } catch (error) {
-      console.log(error);
+      if (axios.isAxiosError(error)) {
+        console.error("Axios 错误:", error.message);
+        console.error("状态码:", error.response?.status);
+        console.error("响应数据:", error.response?.data);
+      } else {
+        console.error("未知错误:", error);
+      }
     }
   }
 
@@ -299,7 +360,7 @@ export class LeekFundDataProvider {
         codes.map((item) => this.findOne(item.code))
       );
 
-      if (results.some((result) => result.status === "rejected")) {
+      if (results.every((result) => result.status === "rejected")) {
         vscode.window.showErrorMessage("基金数据加载失败，请检查网络");
         this.result = 0;
         this._onDidFinishRefresh.fire();
@@ -328,7 +389,7 @@ export class LeekFundDataProvider {
       });
     } catch (err) {
       console.error(err);
-      vscode.window.showErrorMessage("基金数据加载失败，请检查网络");
+      vscode.window.showErrorMessage("基金数据加载失败，请检查网络！");
       this._onDidFinishRefresh.fire();
       this.result = 0;
       return [];
@@ -342,12 +403,12 @@ export class LeekFundDataProvider {
   async getChildren(element: { label: string }) {
     if (!element) {
       return [
-        new CategoryItem("FUND", vscode.TreeItemCollapsibleState.Expanded),
+        new CategoryItem("基金", vscode.TreeItemCollapsibleState.Expanded),
         new SettingItem("基金中心", "home"),
       ];
     }
 
-    if (element.label === "FUND") {
+    if (element.label === "基金") {
       // 异步加载真实基金数据
       return await this.fetchFundData();
     }

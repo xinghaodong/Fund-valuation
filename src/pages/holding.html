@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <!-- <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
+    <title>基金持仓</title>
+    <!-- 使用CDN引入Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- VUE_SCRIPT_PLACEHOLDER -->
+</head>
+
+<body>
+    <div id="app" v-cloak>
+        <div class="header">
+            <div>
+                <h2>基金持仓</h2>
+                <div class="summary">持仓金额、收益和估值信息</div>
+                <div class="total-profit" :class="totalProfit >= 0 ? 'positive' : 'negative'">
+                    总收益: {{ totalProfit }}
+                </div>
+            </div>
+            <div style="display: flex;">
+                <div class="refresh" @click="refreshData">刷新</div>
+                <div class="save" @click="saveData">保存</div>
+            </div>
+        </div>
+
+        <table id="holdingTable">
+            <thead>
+                <tr>
+                    <th>基金名称</th>
+                    <th class="text-right">当日收益</th>
+                    <th class="text-right">持仓金额</th>
+                    <th class="text-right">当日涨幅</th>
+                    <th class="text-right">持仓比例</th>
+                    <!-- <th class="text-right">当前估值</th> -->
+                </tr>
+            </thead>
+            <tbody id="holdingTableBody">
+                <!-- <tr v-if="loading">
+                    <td colspan="5" class="text-center loading">
+                        <span class="loading-spinner"></span>数据加载中...
+                    </td>
+                </tr> -->
+                <tr v-for="item in holdings" :key="item.name">
+                    <td>{{ item.name }}</td>
+                    <td class="text-right" :class="item.dailyEarnings >= 0 ? 'positive' : 'negative'">{{
+                        item.dailyEarnings }}</td>
+                    <td class="text-right"> <input v-model="item.amount" @focus="focusfunc" @blur="formatAmount(item)"
+                            type="number" step="0.01" maxlength="10" placeholder="请输入"></input>
+                    </td>
+                    <td class="text-right" :class="item.profit >= 0 ? 'positive' : 'negative'">
+                        {{ item.profit }}%
+                    </td>
+                    <td class="text-right">{{ item.proportion }}%</td>
+                    <!-- <td class="text-right" :class="item.valuation >= 0 ? 'positive' : 'negative'">
+                        {{ item.valuation >= 0 ? '+' : '' }}{{ item.valuation }}%
+                    </td> -->
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, onBeforeMount, toRaw } = Vue;
+
+        createApp({
+            setup() {
+                //acquireVsCodeApi()
+                const vscode = acquireVsCodeApi();
+                const loading = ref(true);
+                const holdings = ref([
+                    // 示例数据
+                    { name: '基金名称', amount: '1000.00', profit: '0.99', proportion: 25.00 }
+                ]);
+                // 定义一个总收益
+                const totalProfit = ref(0);
+                const timer = ref(null);
+                // 刷新数据的函数
+                const refreshData = () => {
+                    console.log("页面加载了！");
+                    vscode.postMessage({
+                        command: 'positionHolding'
+                    });
+                    // 启用计时器
+                    // timersetInterval()
+                    // loading.value = true;
+                };
+
+                // 保存数据
+                const saveData = () => {
+                    const rawCount = toRaw(holdings.value);
+                    console.log("保存数据：", rawCount);
+                    vscode.postMessage({
+                        command: 'saveData',
+                        holdings: rawCount,
+                    });
+                    // setTimeout(() => {
+                    //     refreshData()
+                    // }, 100);
+                    // 判断计时器是否存不存在就调用timersetInterval
+                    timersetInterval()
+                }
+
+
+                const formatAmount = (item) => {
+                    if (item.amount !== '' && item.amount !== null) {
+                        // 转换为浮点数并保留两位小数
+                        const num = parseFloat(item.amount);
+                        if (!isNaN(num)) {
+                            item.amount = num.toFixed(2);
+                        }
+                    }
+                };
+
+                const timersetInterval = () => {
+                    console.log("定时器启动了！");
+                    // 创建一个定时器，每隔10秒执行一次refreshData函数
+                    timer.value = setInterval(() => {
+                        refreshData()
+                    }, 10000);
+                }
+                const focusfunc = () => {
+                    console.log("输入框聚焦了！清楚计时器");
+                    clearInterval(timer.value)
+                }
+
+                // 监听来自 VS Code 的消息
+                window.addEventListener('message', event => {
+                    console.log('接收到来自 VS Code 的消息：', event.data);
+                    const message = event.data;
+                    switch (message.command) {
+                        case 'holdingData':
+                            holdings.value = message.data;
+                            loading.value = false;
+                            totalProfit.value = message.fundDatas.totalProfit;
+                            break;
+                    }
+                });
+
+                // 页面加载完成后初始化
+                onMounted(() => {
+                    // 可以在这里添加初始化逻辑
+                    refreshData()
+                    // 写一个计时器定时10s调用refreshData函数 timer
+                    timersetInterval()
+                });
+
+                onBeforeMount(() => {
+                    // 销毁定时器
+                    clearInterval(timer);
+                });
+
+                return {
+                    loading,
+                    holdings,
+                    totalProfit,
+                    refreshData,
+                    saveData,
+                    timersetInterval,
+                    formatAmount,
+                    focusfunc
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+<style>
+    [v-cloak] {
+        display: none;
+    }
+
+    body {
+        font-family: var(--vscode-editor-font-family, Segoe UI);
+        padding: 16px;
+        color: var(--vscode-foreground);
+        margin: 0;
+        background-color: var(--vscode-editor-background);
+    }
+
+    h2 {
+        margin: 0 0 12px 0;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
+    }
+
+    .summary {
+        font-size: 0.9em;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        table-layout: fixed;
+        /* 固定表格布局，确保对齐 */
+    }
+
+    th {
+        text-align: left;
+        padding: 8px 12px;
+        color: var(--vscode-descriptionForeground);
+        font-weight: normal;
+        font-size: 0.9em;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    .refresh {
+        cursor: pointer;
+        color: var(--vscode-textLink-foreground);
+        font-size: 0.9em;
+        padding: 4px 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: var(--vscode-button-background);
+    }
+
+    .refresh:hover {
+        background: var(--vscode-button-hoverBackground);
+    }
+
+    .save {
+        cursor: pointer;
+        color: var(--vscode-textLink-foreground);
+        font-size: 0.9em;
+        padding: 4px 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: greenyellow;
+        margin-left: 16px;
+    }
+
+    .positive {
+        color: #d73a49;
+    }
+
+    .negative {
+        color: #28a745;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 20px;
+    }
+
+    .loading-spinner::before {
+        content: "🔄";
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-right: 8px;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* 设置各列宽度，确保表头和内容对齐 */
+    th:nth-child(1),
+    td:nth-child(1) {
+        width: 30%;
+    }
+
+    /* 基金名称 */
+    th:nth-child(2),
+    td:nth-child(2) {
+        width: 20%;
+    }
+
+    /* 持仓金额 */
+    th:nth-child(3),
+    td:nth-child(3) {
+        width: 20%;
+    }
+
+    /* 当日收益 */
+    th:nth-child(4),
+    td:nth-child(4) {
+        width: 15%;
+    }
+
+    /* 持仓比例 */
+    th:nth-child(5),
+    td:nth-child(5) {
+        width: 15%;
+    }
+
+    .total-profit {
+        margin-top: 8px;
+        font-size: 1.1em;
+        font-weight: bold;
+    }
+</style>
+
+</html>

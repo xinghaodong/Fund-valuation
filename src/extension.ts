@@ -2,6 +2,10 @@
 
 import * as vscode from "vscode";
 import { LeekFundDataProvider } from "./fundProvider";
+// 这里引入公用的接口类型文件
+import { IConfigFundItem } from "./common/new";
+import fs from "fs";
+import path from "path";
 
 /**
  * 搜索结果项的接口，继承自 QuickPickItem
@@ -11,15 +15,8 @@ interface IFundQuickPickItem extends vscode.QuickPickItem {
   fundName: string;
 }
 
-/**
- * 存储在 VS Code 配置中的基金对象格式
- */
-interface IConfigFundItem {
-  code: string;
-  name: string;
-}
-
-let holdingsPanel: vscode.WebviewPanel | undefined = undefined;
+let holdingsPanel: vscode.WebviewPanel | undefined;
+let holdingsPanelAmount: vscode.WebviewPanel | undefined;
 
 // 定义一个计时器
 export let timer: NodeJS.Timeout | null = null;
@@ -136,8 +133,15 @@ async function showFundSearchPicker(provider: LeekFundDataProvider) {
       const alreadyExists = fundList.some((item) => item.code === newFundCode);
 
       if (!alreadyExists) {
-        // 添加新基金对象
-        fundList.push({ code: newFundCode, name: newFundName });
+        // 添加新基金对象 给 fundList再增加几个字段 持仓金额、当日收益、当前比例默认是空
+        fundList.push({
+          code: newFundCode,
+          name: newFundName,
+          amount: 0, // 持仓金额默认为空
+          profit: "0", // 当日收益默认为0
+          proportion: 0, // 持仓比例默认为0
+          dailyEarnings: "0", // 当日收益默认为0
+        });
         await config.update(
           "fundList",
           fundList,
@@ -257,6 +261,7 @@ export function activate(context: vscode.ExtensionContext) {
   let removeFundCmd = vscode.commands.registerCommand(
     "leekfund.removeFundItem",
     async (item: any) => {
+      console.log(item);
       if (!item || !item.id) {
         vscode.window.showWarningMessage("未找到该基金信息");
         return;
@@ -333,6 +338,7 @@ export function activate(context: vscode.ExtensionContext) {
         // === 关键：只注册一次消息监听器 ===
         const messageDisposable = holdingsPanel.webview.onDidReceiveMessage(
           async (message) => {
+            console.log(message, "message");
             if (message.command === "refresh" && message.fundCode) {
               const { fundCode, fundName } = message;
               holdingsPanel!.webview.html = getLoadingHTML();
@@ -379,12 +385,77 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // 注册持仓金额命令
+  let positionHoldingCmd = vscode.commands.registerCommand(
+    "leekfund.positionHolding",
+    async () => {
+      console.log("positionHoldingCmd 被触发");
+      if (!holdingsPanelAmount) {
+        holdingsPanelAmount = vscode.window.createWebviewPanel(
+          "positionHolding",
+          "持仓金额",
+          vscode.ViewColumn.Beside,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+          }
+        );
+        setTimeout(() => {
+          holdingsPanelAmount!.webview.html = getPositionHoldingHTML();
+        }, 10);
+        // === 只注册一次消息监听器 ===
+        const messageDisposable =
+          holdingsPanelAmount.webview.onDidReceiveMessage(async (message) => {
+            console.log("收到", message);
+            if (message.command === "positionHolding") {
+              try {
+                const holdingData = await provider.getAllPositionHoldings();
+                const { fundList, fundDatas } = holdingData;
+                console.log("刷新111", fundList, fundDatas);
+                // 发送数据回 Webview
+                holdingsPanelAmount!.webview.postMessage({
+                  command: "holdingData",
+                  data: fundList,
+                  fundDatas,
+                });
+                console.log("holdingData 已发送");
+              } catch (err) {
+                console.error("刷新持仓失败:", err);
+                holdingsPanelAmount!.webview.postMessage({
+                  command: "error",
+                  message: "刷新失败，请重试",
+                });
+              }
+            } else if (message.command === "saveData") {
+              const holdingData = await provider.setAllPositionHoldings(
+                message.holdings
+              );
+              console.log("保存成功", holdingData);
+              // 提示保存成功
+              vscode.window.showInformationMessage("保存成功");
+              provider.refresh();
+            }
+          });
+        // 面板关闭时清理
+        holdingsPanelAmount.onDidDispose(() => {
+          messageDisposable.dispose();
+          holdingsPanelAmount = undefined;
+        });
+      }
+      console.log("positionHoldingCmd 被触发11");
+      holdingsPanelAmount.reveal(vscode.ViewColumn.Beside);
+      // 复用面板
+      holdingsPanelAmount.title = "基金持仓金额明细";
+    }
+  );
+
   context.subscriptions.push(
     refreshCmd,
     showHoldingsCmd,
     addFundCmd,
     topFundCmd,
-    removeFundCmd
+    removeFundCmd,
+    positionHoldingCmd
   );
 
   treeView.onDidChangeVisibility((e) => {
@@ -409,6 +480,8 @@ export function activate(context: vscode.ExtensionContext) {
           startAutoRefresh(provider);
         } else {
           console.log("不符合交易时间条件，设置定时器");
+          // 主动刷新一次
+          provider.refresh();
           // 不符合交易时间条件，设置定时器到下一个交易时间
           scheduleNextTradingTime(provider);
         }
@@ -448,6 +521,22 @@ export function deactivate() {
   // 这里清空之前的setInterval
   if (timer) {
     clearInterval(timer);
+  }
+}
+
+// 获取加载中HTML 输出持仓页面
+function getPositionHoldingHTML() {
+  // 获取 holding.html 文件的绝对路径
+  const htmlPath = path.join(__dirname, "pages", "holding.html");
+
+  try {
+    // 读取 HTML 文件内容
+    const htmlContent = fs.readFileSync(htmlPath, "utf-8");
+    return htmlContent;
+  } catch (error) {
+    // 如果文件读取失败，返回默认内容
+    console.error("读取 holding.html 文件失败:", error);
+    return getErrorHTML("加载失败！");
   }
 }
 

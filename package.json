@@ -2,7 +2,7 @@
   "name": "fund-valuation",
   "displayName": "Fund Valuation",
   "description": "基金估值计算",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "publisher": "Fund-valuation",
   "icon": "logo.png",
   "engines": {
@@ -31,6 +31,11 @@
           "type": "array",
           "default": [],
           "description": "关注的基金代码列表"
+        },
+        "leekfund.fundDatas": {
+          "type": "object",
+          "default": {},
+          "description": "总收益等数据"
         }
       }
     },
@@ -64,6 +69,11 @@
         "command": "leekfund.topFundItem",
         "title": "置顶基金",
         "icon": "$(arrow-up)"
+      },
+      {
+        "command": "leekfund.positionHolding",
+        "title": "持仓明细",
+        "icon": "media/cc.svg"
       }
     ],
     "menus": {
@@ -75,6 +85,11 @@
         },
         {
           "command": "leekfund.refresh",
+          "when": "view == leekFundView && viewItem == fundCategory",
+          "group": "inline"
+        },
+        {
+          "command": "leekfund.positionHolding",
           "when": "view == leekFundView && viewItem == fundCategory",
           "group": "inline"
         },
@@ -110,6 +125,7 @@
     "@typescript-eslint/parser": "^8.45.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
+    "copy-webpack-plugin": "^13.0.1",
     "eslint": "^9.36.0",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.3",

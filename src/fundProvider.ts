@@ -4,10 +4,12 @@ import * as vscode from "vscode";
 import * as path from "path";
 import axios from "axios";
 import * as cheerio from "cheerio";
-interface CodeItem {
-  name: string;
-  code: string;
-}
+import {
+  IConfigFundItem,
+  CodeItem,
+  IFundData,
+  FundHoldingsResult,
+} from "./common/new";
 // 顶层分类节点
 export class CategoryItem extends vscode.TreeItem {
   constructor(
@@ -15,8 +17,8 @@ export class CategoryItem extends vscode.TreeItem {
     collapsibleState: vscode.TreeItemCollapsibleState | undefined
   ) {
     super(label, collapsibleState);
-    this.iconPath = new vscode.ThemeIcon("folder");
-    if (label === "基金") {
+    // this.iconPath = new vscode.ThemeIcon("folder");
+    if (label === "基金估值") {
       this.contextValue = "fundCategory";
     } else {
       this.contextValue = "category";
@@ -24,17 +26,14 @@ export class CategoryItem extends vscode.TreeItem {
   }
 }
 
-// 基金项
+// 基金项  负责处理UI TreeItem
 export class FundItem extends vscode.TreeItem {
   name: string;
   constructor(changePercent: number, name: any, code: any) {
     super("", vscode.TreeItemCollapsibleState.None);
-
     const mediaPath = path.join(__dirname, "..", "media");
-
     let iconPath;
     let labelStr;
-
     if (changePercent > 0) {
       iconPath = vscode.Uri.file(path.join(mediaPath, "up.svg"));
       labelStr = `  +${changePercent.toFixed(2)}%   ${name}`;
@@ -45,7 +44,6 @@ export class FundItem extends vscode.TreeItem {
       iconPath = new vscode.ThemeIcon("dash");
       labelStr = ` 0.00%   ${name}`;
     }
-
     this.iconPath = iconPath;
     this.label = labelStr;
     this.name = name;
@@ -53,7 +51,7 @@ export class FundItem extends vscode.TreeItem {
     this.description = "";
     this.contextValue = "fund";
     this.id = code;
-
+    // 创建点击事件
     this.command = {
       command: "leekfund.showHoldings",
       title: "查看持仓",
@@ -106,7 +104,7 @@ export class LeekFundDataProvider {
   };
 
   // 从配置或本地存储读取关注的基金代码
-  private getWatchList() {
+  private async getWatchList() {
     const config = vscode.workspace.getConfiguration("leekfund");
     // 获取配置的基金列表
     // console.log("基金列表", config.get("fundList", []));
@@ -348,47 +346,85 @@ export class LeekFundDataProvider {
 
   // 从天天基金等接口获取估值
   async fetchFundData() {
-    let codes: CodeItem[] = this.getWatchList();
+    const codes: CodeItem[] = await this.getWatchList();
     if (codes.length === 0) {
       return [];
     }
-    // console.log("codes:", codes);
-    try {
-      // Leek Fund 插件公开接口（你也可以换成自己的后端）
 
+    try {
+      // Step 1: 获取每只基金的估算涨幅
       const results = await Promise.allSettled(
         codes.map((item) => this.findOne(item.code))
       );
-
-      if (results.every((result) => result.status === "rejected")) {
-        vscode.window.showErrorMessage("基金数据加载失败，请检查网络");
-        this.result = 0;
-        this._onDidFinishRefresh.fire();
-      } else {
-        this.result = 1;
-        this._onDidFinishRefresh.fire();
-      }
-      // console.log(results, "results");
-
-      return results.map((result, index) => {
-        const item = codes[index];
-        let changePercent = 0;
-        let name = item.name;
-        let code = item.code;
-
-        if (
-          result.status === "fulfilled" &&
-          result.value &&
-          result.value.length > 0
-        ) {
-          changePercent = parseFloat(result.value[0].fundChangePct) || 0;
+      // Step 2: 构建 code -> changePercent 映射
+      const changeMap = new Map<string, number>();
+      results.forEach((result, index) => {
+        const code = codes[index].code;
+        if (result.status === "fulfilled" && result.value?.length > 0) {
+          const pct = parseFloat(result.value[0].fundChangePct) || 0;
+          changeMap.set(code, pct);
         } else {
-          changePercent = 0;
+          changeMap.set(code, 0);
         }
-        return new FundItem(changePercent, name, code);
+      });
+
+      // Step 3: 读取当前 fundList（含 amount）
+      const fundList: IConfigFundItem[] = vscode.workspace
+        .getConfiguration("leekfund")
+        .get("fundList", []);
+
+      // Step 4 & 5: 计算 profit、dailyEarnings 和 totalProfit
+      let totalProfit = 0;
+      const updatedFundList = fundList.map((item) => {
+        const changePercent = changeMap.get(item.code) || 0;
+        const newItem = { ...item };
+
+        // 更新 profit（字符串，保留两位小数）
+        newItem.profit = changePercent.toFixed(2);
+
+        // 计算 dailyEarnings
+        if (newItem.amount && !isNaN(Number(newItem.amount))) {
+          const dailyEarnings = (Number(newItem.amount) * changePercent) / 100;
+          newItem.dailyEarnings = dailyEarnings.toFixed(2);
+          totalProfit += dailyEarnings;
+        } else {
+          newItem.dailyEarnings = "0.00";
+        }
+
+        return newItem;
+      });
+
+      // Step 6: 更新配置
+      const fundDatas: IFundData = vscode.workspace
+        .getConfiguration("leekfund")
+        .get("fundDatas", {});
+
+      const updatedFundDatas = {
+        ...fundDatas,
+        totalProfit: totalProfit.toFixed(2), //  这就是你的总收益！
+      };
+
+      // 一次性写入配置（避免多次触发 onDidChangeConfiguration）
+      await vscode.workspace
+        .getConfiguration("leekfund")
+        .update("fundList", updatedFundList, vscode.ConfigurationTarget.Global);
+      await vscode.workspace
+        .getConfiguration("leekfund")
+        .update(
+          "fundDatas",
+          updatedFundDatas,
+          vscode.ConfigurationTarget.Global
+        );
+      console.log("总收益", updatedFundDatas);
+      // console.log("基金数据", updatedFundList);
+
+      // Step 7: 构造 FundItem
+      return updatedFundList.map((item) => {
+        const changePercent = changeMap.get(item.code) || 0;
+        return new FundItem(changePercent, item.name, item.code);
       });
     } catch (err) {
-      console.error(err);
+      console.error("fetchFundData error:", err);
       vscode.window.showErrorMessage("基金数据加载失败，请检查网络！");
       this._onDidFinishRefresh.fire();
       this.result = 0;
@@ -403,17 +439,44 @@ export class LeekFundDataProvider {
   async getChildren(element: { label: string }) {
     if (!element) {
       return [
-        new CategoryItem("基金", vscode.TreeItemCollapsibleState.Expanded),
-        new SettingItem("基金中心", "home"),
+        new CategoryItem("基金估值", vscode.TreeItemCollapsibleState.Expanded),
+        // new SettingItem("基金中心", "home"),
       ];
     }
-
-    if (element.label === "基金") {
+    if (element.label === "基金估值") {
       // 异步加载真实基金数据
       return await this.fetchFundData();
     }
 
     return [];
+  }
+
+  // 获取基金持仓数据
+  async getAllPositionHoldings(): Promise<FundHoldingsResult> {
+    await this.fetchFundData();
+    const fundList = await this.getWatchList();
+    const fundDatas: IFundData = vscode.workspace
+      .getConfiguration("leekfund")
+      .get("fundDatas", {});
+    return {
+      fundList,
+      fundDatas,
+    };
+  }
+
+  async setAllPositionHoldings(holdings: any): Promise<IConfigFundItem[]> {
+    const fundList: IConfigFundItem[] = await this.getWatchList();
+    // 更新 amount
+    const updated = fundList.map((item) => {
+      const h = holdings.find((h: any) => h.code === item.code);
+      return h ? { ...item, amount: h.amount } : item;
+    });
+    await vscode.workspace
+      .getConfiguration("leekfund")
+      .update("fundList", updated, vscode.ConfigurationTarget.Global);
+    //触发刷新，从而重新计算收益
+    this.refresh();
+    return updated;
   }
 
   // fundProvider.ts
@@ -424,7 +487,7 @@ export class LeekFundDataProvider {
       this._onDidChangeTreeData.fire(undefined);
       setTimeout(() => {
         resolve();
-      }, 1500);
+      }, 200);
     });
   }
 }

@@ -4,10 +4,13 @@
 export interface IConfigFundItem {
   code: string;
   name: string;
-  amount?: number; // 持仓金额
-  profit?: string; // 当日收益点 比如0.31就是正收益0.31% 如果是 -0.31那就是负收益-0.31%
+  amount?: string; // 持仓金额
+  profit?: string; // 当日预估收益点 比如0.31就是正收益0.31% 如果是 -0.31那就是负收益-0.31%
   proportion?: number; // 持仓比例
-  dailyEarnings?: string; //当日收益
+  dailyEarnings?: string; //当日预估收益
+  isUpdate?: string; //是否已更新
+  fundDerived?: string; // 已更新的实际 收益点
+  actualIncome?: string; //已更新的实际收益 元
 }
 
 /**

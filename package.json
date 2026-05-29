@@ -2,7 +2,7 @@
   "name": "fund-valuation",
   "displayName": "Fund Valuation",
   "description": "基金估值计算",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "publisher": "Fund-valuation",
   "icon": "logo.png",
   "engines": {
@@ -120,7 +120,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.105.0",
+    "@types/vscode": "^1.80.0",
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
     "@vscode/test-cli": "^0.0.11",

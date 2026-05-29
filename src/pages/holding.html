@@ -32,7 +32,8 @@
             <thead>
                 <tr>
                     <th>基金名称</th>
-                    <th class="text-right">当日收益</th>
+                    <th class="text-right">当日预估收益</th>
+                    <th class="text-right">当日实际收益</th>
                     <th class="text-right">持仓金额</th>
                     <th class="text-right">当日涨幅</th>
                     <th class="text-right">持仓比例</th>
@@ -49,6 +50,9 @@
                     <td>{{ item.name }}</td>
                     <td class="text-right" :class="item.dailyEarnings >= 0 ? 'positive' : 'negative'">{{
                         item.dailyEarnings }}</td>
+                    <td class="text-right" :class="item.actualIncome >= 0 ? 'positive' : 'negative'">
+                        {{item.actualIncome}}
+                    </td>
                     <td class="text-right"> <input v-model="item.amount" @focus="focusfunc" @blur="formatAmount(item)"
                             type="number" step="0.01" maxlength="10" placeholder="请输入"></input>
                     </td>
@@ -74,7 +78,7 @@
                 const loading = ref(true);
                 const holdings = ref([
                     // 示例数据
-                    { name: '基金名称', amount: '1000.00', profit: '0.99', proportion: 25.00 }
+                    // { name: '基金名称', amount: '1000.00', profit: '0.99', proportion: 25.00 }
                 ]);
                 // 定义一个总收益
                 const totalProfit = ref(0);

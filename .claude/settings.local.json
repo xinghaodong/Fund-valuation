@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s --max-time 10 \"https://push2delay.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f12,f14,f9&secids=1.600519\")"
+    ]
+  }
+}

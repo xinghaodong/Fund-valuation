@@ -10,6 +10,43 @@ import {
   IFundData,
   FundHoldingsResult,
 } from "./common/new";
+import { formatDate, getFundMarketType } from "./util";
+
+const userAgents = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/605.1.15",
+  "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+];
+
+const referers = [
+  "https://quote.eastmoney.com/",
+  "https://fund.eastmoney.com/",
+  "https://fundf10.eastmoney.com/",
+  "https://guba.eastmoney.com/",
+  "https://danjuanfunds.com/",
+];
+
+function getDynamicHeaders(): Record<string, string> {
+  const ua = userAgents[Math.floor(Math.random() * userAgents.length)];
+  const ref = referers[Math.floor(Math.random() * referers.length)];
+  return {
+    "User-Agent": ua,
+    Referer: ref,
+    "Accept-Language":
+      Math.random() > 0.5
+        ? "zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7"
+        : "zh-CN,zh;q=0.9",
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  };
+}
+
 // 顶层分类节点
 export class CategoryItem extends vscode.TreeItem {
   constructor(
@@ -78,30 +115,89 @@ export class LeekFundDataProvider {
   readonly onDidFinishRefresh = this._onDidFinishRefresh.event;
   public result: Number = 1; // 刷新结果 1 刷新成功 0 刷新失败
 
-  private headers: any = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-    Referer: "https://quote.eastmoney.com/",
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Cache-Control": "no-cache",
-    connection: "keep-alive",
-    "Sec-Ch-Ua":
-      '"Google Chrome";v="141", "Not/A)Brand";v="8", "Chromium";v="141"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1",
-    Cookie:
-      "st_nvi=sqTZk-g-VRnpQuprNKZ1y3bb4; qgqp_b_id=af5cce20eeaa6d564690e90f144c5289; nid=07da164c511bc9eb6784dd93043c48df; nid_create_time=1759980972277; gvi=qkQPi06hWa6NEFgq9B34f7c14; gvi_create_time=1759980972277; AUTH_FUND.EASTMONEY.COM_GSJZ=AUTH*TTJJ*TOKEN; st_si=93710146157032; st_asi=delete; EMFUND1=10-20%2010%3A42%3A48@%23%24%u5E7F%u53D1%u6E2F%u80A1%u521B%u65B0%u836FETF%u8054%u63A5%28QDII%29A@%23%24019670; EMFUND2=10-20%2010%3A42%3A47@%23%24%u4E1C%u8D22%u4E0A%u8BC150A@%23%24008240; EMFUND3=10-20%2010%3A42%3A48@%23%24%u5BCC%u56FD%u4E0A%u8BC1%u6307%u6570ETF%u8054%u63A5C@%23%24013286; EMFUND4=10-24%2018%3A21%3A02@%23%24%u5929%u5F18%u4E2D%u8BC1%u98DF%u54C1%u996E%u6599ETF@%23%24159736; EMFUND5=10-24%2018%3A15%3A33@%23%24%u6613%u65B9%u8FBE%u4E2D%u8BC1%u6D77%u5916%u4E92%u8054%u7F5150ETF%u8054%u63A5%28QDII%29A@%23%24006327; EMFUND6=10-27%2011%3A07%3A42@%23%24%u534E%u5B9D%u6D77%u5916%u79D1%u6280%u80A1%u7968%28QDII-LOF%29C@%23%24017204; EMFUND7=10-27%2011%3A20%3A41@%23%24%u4E2D%u6B27%u533B%u7597%u5065%u5EB7%u6DF7%u5408A@%23%24003095; EMFUND8=10-27%2016%3A37%3A23@%23%24%u6C38%u8D62%u79D1%u6280%u667A%u9009%u6DF7%u5408%u53D1%u8D77A@%23%24022364; EMFUND0=10-28%2009%3A32%3A42@%23%24%u62DB%u5546%u4E2D%u8BC1%u767D%u9152%u6307%u6570%28LOF%29A@%23%24161725; EMFUND9=10-28 09:39:20@#$%u534E%u5B9D%u7EB3%u65AF%u8FBE%u514B%u7CBE%u9009%u80A1%u7968%u53D1%u8D77%u5F0F%28QDII%29A@%23%24017436; st_pvi=70723012225516; st_sp=2025-10-09%2011%3A36%3A12; st_inirUrl=https%3A%2F%2Fchat.qwen.ai%2Fc%2F7f8dd940-74e6-48ab-873a-397bae1fdfbf; st_sn=8; st_psi=20251028094729670-112200305283-5653636181",
-    host: "push2.eastmoney.com",
-    pragma: "no-cache",
-  };
+  // 自适应刷新状态
+  private _refreshTimer: NodeJS.Timeout | null = null;
+  private _netValueTimer: NodeJS.Timeout | null = null;
+  private _refreshInterval: number = 15000;
+  private _netValueInterval: number = 15000;
+  private _consecutiveErrors: number = 0;
+  private _netValueErrors: number = 0;
+  private readonly MIN_INTERVAL = 10000;
+  private readonly MAX_INTERVAL = 120000;
+
+  private _getNextInterval(baseErrors: number): number {
+    // 成功时：随机 10~20s
+    // 失败时：在随机基础上指数退避
+    const successBase = 10000 + Math.random() * 10000; // 10000~20000
+    if (baseErrors === 0) {
+      return successBase;
+    }
+    const backoff = Math.min(Math.pow(2, baseErrors), 8); // 最多退避 8 倍
+    return Math.min(successBase * backoff, this.MAX_INTERVAL);
+  }
+
+  public startAutoRefresh(): void {
+    this._scheduleNextRefresh();
+  }
+
+  public startAutoNetValueRefresh(): void {
+    this._scheduleNextNetValueRefresh();
+  }
+
+  public stopAutoRefresh(): void {
+    if (this._refreshTimer) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+    if (this._netValueTimer) {
+      clearTimeout(this._netValueTimer);
+      this._netValueTimer = null;
+    }
+  }
+
+  private _scheduleNextRefresh(): void {
+    this._refreshTimer = setTimeout(async () => {
+      try {
+        await this.refresh();
+      } catch (err) {
+        console.error("刷新失败:", err);
+      }
+      this._scheduleNextRefresh();
+    }, this._refreshInterval);
+  }
+
+  private _scheduleNextNetValueRefresh(): void {
+    this._netValueTimer = setTimeout(async () => {
+      try {
+        await this.fetchNetValueChanges();
+      } catch (err) {
+        console.error("净值更新失败:", err);
+      }
+      this._scheduleNextNetValueRefresh();
+    }, this._netValueInterval);
+  }
+
+  public onRefreshSuccess(): void {
+    this._consecutiveErrors = 0;
+    this._refreshInterval = this._getNextInterval(0);
+  }
+
+  public onNetValueSuccess(): void {
+    this._netValueErrors = 0;
+    this._netValueInterval = this._getNextInterval(0);
+  }
+
+  public onRefreshError(): void {
+    this._consecutiveErrors++;
+    this._refreshInterval = this._getNextInterval(this._consecutiveErrors);
+  }
+
+  public onNetValueError(): void {
+    this._netValueErrors++;
+    this._netValueInterval = this._getNextInterval(this._netValueErrors);
+  }
+
+
 
   // 从配置或本地存储读取关注的基金代码
   private async getWatchList() {
@@ -121,7 +217,7 @@ export class LeekFundDataProvider {
     };
     console.log("搜索基金", url + params.key);
     try {
-      const res = await axios.get(url, { params });
+      const res = await axios.get(url, { params, headers: getDynamicHeaders() });
       if (res.data.Datas && res.data.Datas.length > 0) {
         // 过滤数据 CATEGORY === 700的才能返回
         let data = res.data.Datas.filter((item: { CATEGORY: number }) => {
@@ -170,7 +266,7 @@ export class LeekFundDataProvider {
     // id 基金编号，topline 显示基金持有多少股票，
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${id}&topline=100&year=&month=`;
     try {
-      const res = await axios.get(url);
+      const res = await axios.get(url, { headers: getDynamicHeaders() });
 
       const $ = cheerio.load(res.data);
       // console.log($('#gpdmList').text().split(','), 'cheerio');
@@ -288,7 +384,9 @@ export class LeekFundDataProvider {
       const codes = parsed.map((item) => item.code).join(",");
       const stockInfo = await this.getStockInfo(codes);
       // console.log(stockInfo, "stockInfo");
-      parsed = this.mergeArrays(stockInfo.diff, parsed, "f12", "rawName");
+      if (stockInfo?.diff) {
+        parsed = this.mergeArrays(stockInfo.diff, parsed, "f12", "rawName");
+      }
       // console.log(parsed, "parsed");
       // -----------------------------
       //  计算基金整体涨跌幅（加权平均）
@@ -331,7 +429,7 @@ export class LeekFundDataProvider {
       secids: codes,
     };
     try {
-      const response = await axios.get(url, { params, headers: this.headers });
+      const response = await axios.get(url, { params, headers: getDynamicHeaders() });
       return response.data.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -428,7 +526,10 @@ export class LeekFundDataProvider {
       vscode.window.showErrorMessage("基金数据加载失败，请检查网络！");
       this._onDidFinishRefresh.fire();
       this.result = 0;
+      this.onRefreshError();
       return [];
+    } finally {
+      this.onRefreshSuccess();
     }
   }
 
@@ -464,6 +565,17 @@ export class LeekFundDataProvider {
     };
   }
 
+  async findOne18(code: string): Promise<any> {
+    let url = "https://danjuanfunds.com/djapi/fund/";
+    console.log(code);
+    try {
+      const res = await axios.get(url + code, { headers: getDynamicHeaders() });
+      return res.data.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async setAllPositionHoldings(holdings: any): Promise<IConfigFundItem[]> {
     const fundList: IConfigFundItem[] = await this.getWatchList();
     // 更新 amount
@@ -477,6 +589,58 @@ export class LeekFundDataProvider {
     //触发刷新，从而重新计算收益
     this.refresh();
     return updated;
+  }
+  // 更新净值
+  async fetchNetValueChanges(): Promise<IConfigFundItem[]> {
+    let fundList: IConfigFundItem[] = await this.getWatchList();
+    let arr = fundList.map((item) => this.findOne18(item.code)); // 返回Promise
+    const results = await Promise.allSettled(arr);
+    console.log("results", results);
+
+    // 先计算所有更新，不立即写入
+    const updates: Partial<IConfigFundItem>[] = results.map((item, index) => {
+      const today = new Date();
+      const todayStr = formatDate(today);
+      const yesterdayStr = formatDate(new Date(today.getTime() - 86400000));
+
+      const navDate = (item as any).value?.fund_derived?.end_date;
+      const marketType = getFundMarketType(item);
+      const update: Partial<IConfigFundItem> = {};
+
+      if (marketType === "A" || marketType === "QDII_HK") {
+        if (navDate === todayStr) {
+          update.isUpdate = "1";
+        }
+      } else {
+        // QDII_US
+        if (navDate === yesterdayStr) {
+          if (fundList[index].isUpdate !== "1") {
+            const nav_grtd = (item as any).value?.fund_derived?.nav_grtd;
+            const amount = Number(fundList[index].amount);
+            const navGrtdNum = parseFloat(nav_grtd);
+            const actualIncome = amount * navGrtdNum * 0.01;
+            update.actualIncome = actualIncome.toFixed(2);
+            update.amount = (amount + actualIncome).toFixed(2);
+            update.isUpdate = "1";
+            update.fundDerived = nav_grtd;
+          }
+        }
+      }
+      return update;
+    });
+
+    // 应用所有更新到 fundList
+    for (let i = 0; i < updates.length; i++) {
+      fundList[i] = { ...fundList[i], ...updates[i] };
+    }
+
+    // 一次性写入配置
+    await vscode.workspace
+      .getConfiguration("leekfund")
+      .update("fundList", fundList, vscode.ConfigurationTarget.Global);
+
+    console.log("results", results);
+    return fundList;
   }
 
   // fundProvider.ts
